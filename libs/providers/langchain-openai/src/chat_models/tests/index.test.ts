@@ -6,6 +6,10 @@ import { load } from "@langchain/core/load";
 import { tool } from "@langchain/core/tools";
 import { ChatOpenAI } from "../index.js";
 import { _convertOpenAIResponsesUsageToLangChainUsage } from "../../utils/output.js";
+import type { BaseMessage } from '@langchain/core/messages'
+import { CallbackManagerForLLMRun } from '@langchain/core/callbacks/manager'
+import type { ChatResult } from '@langchain/core/outputs'
+import { NewTokenIndices } from '@langchain/core/callbacks/base'
 
 describe("ChatOpenAI", () => {
   describe("should initialize with correct values", () => {
@@ -990,6 +994,228 @@ describe("ChatOpenAI", () => {
       });
 
       await expect(model.moderateContent("Test content")).rejects.toThrow();
+    });
+  });
+  describe("generate", () => {
+    test("should pass run manager to responsesAPI", async () => {
+      const mockResponseDefaults = {
+        object: "response",
+        background: false,
+        created_at: Math.floor(Date.now() / 1000),
+        completed_at: null,
+        error: null,
+        frequency_penalty: 0.0,
+        incomplete_details: null,
+        instructions: null,
+        max_output_tokens: null,
+        max_tool_calls: null,
+        output: [],
+        parallel_tool_calls: true,
+        presence_penalty: 0.0,
+        previous_response_id: null,
+        prompt_cache_key: null,
+        prompt_cache_retention: null,
+        reasoning: { "effort": null, "summary": null },
+        safety_identifier: null,
+        service_tier: "auto",
+        store: true,
+        temperature: 1.0,
+        text: { "format": { "type": "text" }, "verbosity": "medium" },
+        tool_choice: "auto",
+        tools: [],
+        top_logprobs: 0,
+        top_p: 1.0,
+        truncation: "disabled",
+        usage: null,
+        user: null,
+        metadata: {}
+      }
+      const mockGenerationResponse =
+        [
+          {
+            type: 'response.created',
+            response: {
+              ...mockResponseDefaults,
+              id: "resp_0",
+              status: "in_progress",
+            },
+            sequence_number: 0
+          },
+          {
+            type: "response.in_progress",
+            response: {
+              ...mockResponseDefaults,
+              id: "resp_0",
+              status: "in_progress",
+            },
+            sequence_number: 1
+          },
+          {
+            type: "response.output_item.added",
+            item: {
+              id: "msg_0",
+              type: "message",
+              status: "in_progress",
+              content: [],
+              role: "assistant"
+            },
+            output_index: 0,
+            sequence_number: 2
+          },
+          {
+            type: "response.content_part.added",
+            content_index: 0,
+            item_id: "msg_0",
+            output_index: 0,
+            part: { "type": "output_text", "annotations": [], "logprobs": [], "text": "" },
+            sequence_number: 3
+          },
+          {
+            type: "response.output_text.delta",
+            content_index: 0,
+            delta: "Foo",
+            item_id: "msg_0",
+            logprobs: [],
+            obfuscation: "hSUmUFWGq",
+            output_index: 0,
+            sequence_number: 4
+          },
+          {
+            type: "response.output_text.delta",
+            content_index: 0,
+            delta: " bar",
+            item_id: "msg_0",
+            logprobs: [],
+            obfuscation: "1xY1pY4JXGO",
+            output_index: 0,
+            sequence_number: 5
+          },
+          {
+            type: "response.output_text.done",
+            content_index: 0,
+            item_id: "msg_0",
+            logprobs: [],
+            output_index: 0,
+            sequence_number: 39,
+            text: "Foo bar"
+          },
+          {
+            type: "response.content_part.done",
+            content_index: 0,
+            item_id: "msg_0",
+            output_index: 0,
+            part: {
+              type: "output_text",
+              annotations: [],
+              logprobs: [],
+              text: "Foo bar"
+            },
+            sequence_number: 40
+          },
+          {
+            type: "response.output_item.done",
+            item: {
+              id: "msg_0",
+              type: "message",
+              status: "completed",
+              content: [{
+                type: "output_text",
+                annotations: [],
+                logprobs: [],
+                text: "Foo bar"
+              }],
+              role: "assistant"
+            },
+            output_index: 0,
+            sequence_number: 41
+          },
+          {
+            type: "response.completed",
+            response: {
+              ...mockResponseDefaults,
+              id: "resp_0",
+              status: "completed",
+              completed_at: Math.round(Date.now() / 1000),
+              output: [{
+                id: "msg_0",
+                type: "message",
+                status: "completed",
+                content: [{
+                  type: "output_text",
+                  annotations: [],
+                  logprobs: [],
+                  text: "Foo bar"
+                }],
+                role: "assistant"
+              }],
+              parallel_tool_calls: true,
+              presence_penalty: 0.0,
+              previous_response_id: null,
+              prompt_cache_key: null,
+              prompt_cache_retention: null,
+              reasoning: { "effort": null, "summary": null },
+              safety_identifier: null,
+              service_tier: "default",
+              store: true,
+              temperature: 1.0,
+              text: { "format": { "type": "text" }, "verbosity": "medium" },
+              tool_choice: "auto",
+              tools: [],
+              top_logprobs: 0,
+              top_p: 1.0,
+              truncation: "disabled",
+              usage: {
+                input_tokens: 17,
+                input_tokens_details: { "cached_tokens": 0 },
+                output_tokens: 36,
+                output_tokens_details: { "reasoning_tokens": 0 },
+                total_tokens: 53
+              },
+              user: null,
+              metadata: {}
+            },
+            sequence_number: 42
+          }
+        ].map((e) => `event: ${e.type}\ndata: ${JSON.stringify(e)}\n`).join('\n') + '\n';
+      const mockFetch = vi.fn<(url: string | URL | Request, options?: any) => Promise<any>>();
+      mockFetch.mockImplementation((url, _options) => {
+        if (typeof url === 'string') {
+          expect(url.endsWith('/responses')).toBeTruthy()
+        } else if (url instanceof URL) {
+          expect(url.pathname.endsWith('/responses')).toBeTruthy()
+        } else {
+          expect(url.url.endsWith('/responses')).toBeTruthy()
+        }
+        return Promise.resolve(
+          new Response(mockGenerationResponse, {
+            status: 200,
+            headers: {
+              "Content-Type": "text/event-stream",
+            },
+          })
+        );
+      });
+
+      const model = new ChatOpenAI({
+        model: "gpt-4.1",
+        apiKey: "test-key",
+        useResponsesApi: true,
+        streaming: true,
+        configuration: {
+          fetch: mockFetch,
+        },
+      })
+
+      const callbackHandler = {
+        handleLLMNewToken: vi.fn<(token: string, idx: NewTokenIndices, runId: string, parentRunId: string, tags?: string[]) => Promise<void> | void>(),
+      }
+
+      const result = await model.invoke("test", {
+        callbacks: [callbackHandler]
+      })
+
+      expect(callbackHandler.handleLLMNewToken).toHaveBeenCalled()
+      expect(result.text).toEqual('Foo bar')
     });
   });
 });
